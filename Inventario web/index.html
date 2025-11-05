@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Inventario Multi-Bodega</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading" class="loading-screen">
+        <div class="loading-spinner"></div>
+        <p>Cargando sistema...</p>
+    </div>
+
+    <!-- Login Page -->
+    <div id="loginPage" class="page active">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-header">
+                    <div class="app-icon">🏭</div>
+                    <h1>Sistema de Inventario Multi-Bodega</h1>
+                </div>
+                
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <label for="username">Usuario:</label>
+                        <input type="text" id="username" name="username" required autocomplete="username">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">Contraseña:</label>
+                        <input type="password" id="password" name="password" required autocomplete="current-password">
+                    </div>
+                    
+                    <div id="loginError" class="error-message"></div>
+                    
+                    <button type="submit" class="btn btn-primary btn-large">
+                        Iniciar Sesión
+                    </button>
+                </form>
+
+                <div class="demo-users">
+                    <h3>Usuarios de Prueba:</h3>
+                    <div class="user-list">
+                        <div class="user-item">
+                            <strong>Admin_Santiago</strong> - Administrador
+                        </div>
+                        <div class="user-item">
+                            <strong>Operador_Juan</strong> - Operador
+                        </div>
+                        <div class="user-item">
+                            <strong>Operador_Maria</strong> - Operadora
+                        </div>
+                        <div class="user-item">
+                            <strong>Supervisor_Carlos</strong> - Supervisor
+                        </div>
+                        <div class="user-note">Contraseña: admin123</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Home Page -->
+    <div id="homePage" class="page">
+        <header class="app-header">
+            <div class="header-content">
+                <button id="backButton" class="btn btn-secondary btn-icon" style="display: none;">
+                    ←
+                </button>
+                <h1 id="pageTitle">Sistema de Inventario</h1>
+                <div class="header-actions">
+                    <span id="userInfo" class="user-info"></span>
+                    <button id="logoutBtn" class="btn btn-danger">Cerrar Sesión</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Warehouse Selection -->
+            <section id="warehouseSection" class="card">
+                <h2>Selección de Bodega</h2>
+                <p>Seleccione la bodega donde se encuentra:</p>
+                
+                <div class="form-group">
+                    <select id="warehouseSelect" class="form-control">
+                        <option value="">Seleccione una bodega...</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- Options Grid -->
+            <section id="optionsSection" class="card" style="display: none;">
+                <h2>Opciones Disponibles</h2>
+                
+                <div class="options-grid">
+                    <div class="option-card" id="inventoryOption">
+                        <div class="option-icon">📦</div>
+                        <h3>Inventario</h3>
+                        <p>Consultar stock y gestionar items</p>
+                        <button class="btn btn-primary option-btn">Abrir</button>
+                    </div>
+                    
+                    <div class="option-card" id="withdrawalsOption">
+                        <div class="option-icon">📤</div>
+                        <h3>Retiros</h3>
+                        <p>Realizar retiros con código de barras</p>
+                        <button class="btn btn-success option-btn">Abrir</button>
+                    </div>
+                    
+                    <div class="option-card" id="historyOption">
+                        <div class="option-icon">📊</div>
+                        <h3>Historial</h3>
+                        <p>Ver movimientos y transacciones</p>
+                        <button class="btn btn-info option-btn">Abrir</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Inventory Page -->
+    <div id="inventoryPage" class="page">
+        <!-- Header will be dynamically loaded -->
+        <main class="main-content">
+            <!-- Search Section -->
+            <section class="card">
+                <h2>Buscar en Inventario</h2>
+                <div class="search-container">
+                    <input type="text" id="inventorySearch" placeholder="Buscar por nombre, código o factura..." 
+                           class="form-control search-input">
+                </div>
+            </section>
+
+            <!-- Items List -->
+            <section class="card">
+                <div class="section-header">
+                    <h2>Items en Inventario</h2>
+                    <div class="action-buttons">
+                        <button id="addStockBtn" class="btn btn-primary">➕ Agregar Stock</button>
+                        <button id="addItemBtn" class="btn btn-success">✨ Nuevo Material</button>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table id="inventoryTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Código</th>
+                                <th>Stock</th>
+                                <th>Obra</th>
+                                <th>Factura</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventoryTableBody">
+                            <!-- Items will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div id="inventoryInfo" class="info-text"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Withdrawals Page -->
+    <div id="withdrawalsPage" class="page">
+        <main class="main-content">
+            <!-- Barcode Scanner -->
+            <section class="card">
+                <h2>Escanear Item</h2>
+                <div class="scanner-section">
+                    <div class="scanner-options">
+                        <button id="startCameraBtn" class="btn btn-primary">📷 Activar Cámara</button>
+                        <button id="stopCameraBtn" class="btn btn-secondary" style="display: none;">⏹️ Detener Cámara</button>
+                        <span class="scanner-or">O</span>
+                        <div class="manual-input">
+                            <input type="text" id="manualBarcodeInput" placeholder="Ingresar código manualmente o escanear" 
+                                   class="form-control">
+                            <button id="manualBarcodeBtn" class="btn btn-success">Agregar</button>
+                        </div>
+                    </div>
+                    
+                    <div id="cameraContainer" class="camera-container" style="display: none;">
+                        <div id="scanner"></div>
+                        <div class="camera-overlay">
+                            <div class="scan-line"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Withdrawal Info -->
+            <section class="card">
+                <h2>Información del Retiro</h2>
+                <div class="form-group">
+                    <label for="obraInput">Obra:</label>
+                    <input type="text" id="obraInput" class="form-control" placeholder="Ingrese el nombre de la obra">
+                </div>
+            </section>
+
+            <!-- Items List -->
+            <section class="card">
+                <div class="section-header">
+                    <h2>Items para Retiro</h2>
+                    <button id="clearWithdrawalBtn" class="btn btn-danger">🗑️ Limpiar Todo</button>
+                </div>
+                
+                <div class="table-container">
+                    <table id="withdrawalTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Código</th>
+                                <th>Obra</th>
+                                <th>Factura</th>
+                                <th>Stock Disp.</th>
+                                <th>Cantidad</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="withdrawalTableBody">
+                            <!-- Withdrawal items will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="action-buttons-center">
+                    <button id="confirmWithdrawalBtn" class="btn btn-success btn-large" disabled>
+                        ✓ Confirmar Retiro
+                    </button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- History Page -->
+    <div id="historyPage" class="page">
+        <main class="main-content">
+            <section class="card">
+                <div class="section-header">
+                    <h2>Historial de Movimientos</h2>
+                    <button id="refreshHistoryBtn" class="btn btn-primary">🔄 Actualizar</button>
+                </div>
+                
+                <div class="table-container">
+                    <table id="historyTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha y Hora</th>
+                                <th>Acción</th>
+                                <th>Item</th>
+                                <th>Cantidad</th>
+                                <th>Obra</th>
+                                <th>Usuario</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                            <!-- History records will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="quantityModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Seleccionar Cantidad</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="itemInfo"></div>
+                <div class="form-group">
+                    <label for="quantityInput">Cantidad:</label>
+                    <input type="number" id="quantityInput" class="form-control" min="1" value="1">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelQuantity">Cancelar</button>
+                <button class="btn btn-primary" id="confirmQuantity">Agregar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="addStockModal" class="modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3>Agregar Stock a Item Existente</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Content will be dynamically loaded -->
+            </div>
+        </div>
+    </div>
+
+    <div id="addItemModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Agregar Nuevo Material</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="addItemForm">
+                    <!-- Form will be dynamically loaded -->
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
