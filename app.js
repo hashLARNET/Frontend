@@ -7,6 +7,9 @@ class InventoryApp {
         this.withdrawalItems = [];
         this.supabase = null;
         this.isCameraActive = false;
+        this.searchTimeout = null;
+        this.currentItemForStock = null;
+        this.currentItemForWithdrawal = null;
         
         this.init();
     }
@@ -111,6 +114,9 @@ class InventoryApp {
 
     // Navegación entre páginas
     showPage(pageName) {
+        // Limpiar página anterior
+        this.cleanupPage(this.currentPage);
+        
         // Ocultar todas las páginas
         document.querySelectorAll('.page').forEach(page => {
             page.classList.remove('active');
@@ -135,7 +141,7 @@ class InventoryApp {
         const userInfo = document.getElementById('userInfo');
         
         // Configurar botón de volver
-        if (pageName === 'home') {
+        if (pageName === 'home' || pageName === 'login') {
             backButton.style.display = 'none';
             pageTitle.textContent = CONFIG.APP_TITLE;
         } else {
@@ -145,7 +151,7 @@ class InventoryApp {
         
         // Actualizar información del usuario
         if (this.currentUser) {
-            userInfo.textContent = `Bienvenido, ${this.currentUser.full_name}`;
+            userInfo.textContent = `Bienvenido, ${this.currentUser.full_name || this.currentUser.email}`;
         }
     }
 
@@ -156,7 +162,7 @@ class InventoryApp {
             'history': 'Historial'
         };
         const warehouseName = this.currentWarehouse ? ` - ${this.currentWarehouse.name}` : '';
-        return titles[pageName] + warehouseName;
+        return (titles[pageName] || pageName) + warehouseName;
     }
 
     navigateBack() {
@@ -182,29 +188,25 @@ class InventoryApp {
 
     showError(message, elementId = 'loginError') {
         const errorElement = document.getElementById(elementId);
-        errorElement.textContent = message;
-        errorElement.style.display = 'block';
-        
-        // Auto-ocultar después de 5 segundos
-        setTimeout(() => {
-            errorElement.style.display = 'none';
-        }, 5000);
+        if (errorElement) {
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            
+            // Auto-ocultar después de 5 segundos
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 5000);
+        } else {
+            console.error('Error element not found:', elementId, 'Message:', message);
+        }
     }
 
     showSuccess(message) {
-        // Podríamos implementar un sistema de notificaciones toast
-        alert(message); // Temporal - mejorar con notificaciones bonitas
+        // Implementación temporal - mejorar con notificaciones toast
+        alert(message);
     }
-}
 
-// Inicializar la aplicación cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', () => {
-    window.inventoryApp = new InventoryApp();
-});
-// Métodos de autenticación y sesión
-class InventoryApp {
-    // ... métodos anteriores ...
-
+    // Métodos de autenticación y sesión
     async checkExistingSession() {
         try {
             const { data: { session }, error } = await this.supabase.auth.getSession();
@@ -240,7 +242,7 @@ class InventoryApp {
         try {
             // Intentar login via Supabase
             const { data, error } = await this.supabase.auth.signInWithPassword({
-                email: `${username}@inventario.com`, // Asumimos formato email
+                email: `${username}@inventario.com`,
                 password: password
             });
 
@@ -318,11 +320,17 @@ class InventoryApp {
             console.error('Error obteniendo datos del usuario:', error);
             
             // Fallback: intentar con el backend
-            const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/users/${userId}`);
-            if (response.ok) {
-                return await response.json();
+            try {
+                const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/users/${userId}`);
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (fetchError) {
+                console.error('Error en fallback getUserData:', fetchError);
             }
-            throw error;
+            
+            // Si todo falla, devolver datos básicos
+            return { full_name: 'Usuario' };
         }
     }
 
@@ -340,6 +348,8 @@ class InventoryApp {
             this.currentUser = null;
             this.currentWarehouse = null;
             this.withdrawalItems = [];
+            this.currentItemForStock = null;
+            this.currentItemForWithdrawal = null;
             
             // Mostrar página de login
             this.showPage('login');
@@ -396,7 +406,8 @@ class InventoryApp {
             
         } catch (error) {
             console.error('Error fetching warehouses:', error);
-            throw error;
+            // Devolver array vacío para evitar que la aplicación se rompa
+            return [];
         }
     }
 
@@ -418,11 +429,8 @@ class InventoryApp {
             document.getElementById('optionsSection').style.display = 'none';
         }
     }
-}
-// Métodos de gestión de inventario
-class InventoryApp {
-    // ... métodos anteriores ...
 
+    // Métodos de gestión de inventario
     async loadPageData(pageName) {
         switch (pageName) {
             case 'inventory':
@@ -512,8 +520,8 @@ class InventoryApp {
                 <td>${this.escapeHtml(item.name)}</td>
                 <td>${this.escapeHtml(item.barcode)}</td>
                 <td class="${stockClass}">${item.stock}</td>
-                <td>${this.escapeHtml(item.obra)}</td>
-                <td>${this.escapeHtml(item.n_factura)}</td>
+                <td>${this.escapeHtml(item.obra || '')}</td>
+                <td>${this.escapeHtml(item.n_factura || '')}</td>
             `;
             
             tbody.appendChild(row);
@@ -654,7 +662,7 @@ class InventoryApp {
                 <td>${this.escapeHtml(item.name)}</td>
                 <td>${this.escapeHtml(item.barcode)}</td>
                 <td>${item.stock}</td>
-                <td>${this.escapeHtml(item.obra)}</td>
+                <td>${this.escapeHtml(item.obra || '')}</td>
                 <td>
                     <button class="btn btn-primary btn-sm" 
                             onclick="inventoryApp.selectItemForStock('${item.id}')">
@@ -691,8 +699,8 @@ class InventoryApp {
                 <h4>${this.escapeHtml(item.name)}</h4>
                 <p><strong>Stock actual:</strong> ${item.stock}</p>
                 <p><strong>Código:</strong> ${this.escapeHtml(item.barcode)}</p>
-                <p><strong>Obra:</strong> ${this.escapeHtml(item.obra)}</p>
-                <p><strong>Factura:</strong> ${this.escapeHtml(item.n_factura)}</p>
+                <p><strong>Obra:</strong> ${this.escapeHtml(item.obra || '')}</p>
+                <p><strong>Factura:</strong> ${this.escapeHtml(item.n_factura || '')}</p>
             </div>
         `;
         
@@ -714,23 +722,53 @@ class InventoryApp {
             return;
         }
 
-        if (!this.currentItemForStock) {
-            this.showError('No hay item seleccionado');
-            return;
-        }
+        if (this.currentItemForStock) {
+            try {
+                await this.addItemStock(this.currentItemForStock.id, quantity);
+                
+                this.hideModal('quantityModal');
+                this.showSuccess(`Se agregaron ${quantity} unidades al stock de '${this.currentItemForStock.name}'`);
+                
+                // Recargar inventario
+                await this.loadInventory();
+                
+            } catch (error) {
+                console.error('Error agregando stock:', error);
+                this.showError('Error al agregar stock');
+            }
+        } else if (this.currentItemForWithdrawal) {
+            // Manejo para retiros
+            if (quantity > this.currentItemForWithdrawal.stock) {
+                this.showError(`Cantidad máxima disponible: ${this.currentItemForWithdrawal.stock}`);
+                return;
+            }
 
-        try {
-            await this.addItemStock(this.currentItemForStock.id, quantity);
-            
+            // Verificar si el item ya está en la lista
+            const existingIndex = this.withdrawalItems.findIndex(
+                wi => wi.item.id === this.currentItemForWithdrawal.id
+            );
+
+            if (existingIndex >= 0) {
+                // Actualizar cantidad existente
+                const newQuantity = this.withdrawalItems[existingIndex].quantity + quantity;
+                if (newQuantity > this.currentItemForWithdrawal.stock) {
+                    this.showError("La cantidad total excede el stock disponible");
+                    return;
+                }
+                this.withdrawalItems[existingIndex].quantity = newQuantity;
+            } else {
+                // Agregar nuevo item
+                this.withdrawalItems.push({
+                    item: this.currentItemForWithdrawal,
+                    quantity: quantity
+                });
+            }
+
             this.hideModal('quantityModal');
-            this.showSuccess(`Se agregaron ${quantity} unidades al stock de '${this.currentItemForStock.name}'`);
-            
-            // Recargar inventario
-            await this.loadInventory();
-            
-        } catch (error) {
-            console.error('Error agregando stock:', error);
-            this.showError('Error al agregar stock');
+            this.updateWithdrawalList();
+            this.showSuccess('Item agregado al retiro');
+        } else {
+            this.showError('No hay item seleccionado');
         }
     }
 
@@ -780,18 +818,7 @@ class InventoryApp {
         }
     }
 
-    // Utility function para escapar HTML
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-}
-// Métodos de retiros y escáner
-class InventoryApp {
-    // ... métodos anteriores ...
-
-    // Sistema de escáner
+    // Métodos de retiros y escáner
     async startCamera() {
         try {
             this.isCameraActive = true;
@@ -816,6 +843,11 @@ class InventoryApp {
 
     async initializeQuagga() {
         return new Promise((resolve, reject) => {
+            if (typeof Quagga === 'undefined') {
+                reject(new Error('QuaggaJS no está cargado'));
+                return;
+            }
+            
             Quagga.init(CONFIG.SCANNER_CONFIG, (err) => {
                 if (err) {
                     reject(err);
@@ -841,7 +873,9 @@ class InventoryApp {
         this.isCameraActive = false;
         
         try {
-            Quagga.stop();
+            if (typeof Quagga !== 'undefined') {
+                Quagga.stop();
+            }
         } catch (error) {
             console.error('Error deteniendo cámara:', error);
         }
@@ -931,8 +965,8 @@ class InventoryApp {
                 <h4>${this.escapeHtml(item.name)}</h4>
                 <p><strong>Stock disponible:</strong> ${item.stock}</p>
                 <p><strong>Código:</strong> ${this.escapeHtml(item.barcode)}</p>
-                <p><strong>Obra del item:</strong> ${this.escapeHtml(item.obra)}</p>
-                <p><strong>Factura:</strong> ${this.escapeHtml(item.n_factura)}</p>
+                <p><strong>Obra del item:</strong> ${this.escapeHtml(item.obra || '')}</p>
+                <p><strong>Factura:</strong> ${this.escapeHtml(item.n_factura || '')}</p>
             </div>
         `;
         
@@ -944,50 +978,6 @@ class InventoryApp {
         
         this.showModal('quantityModal');
         document.getElementById('quantityInput').focus();
-    }
-
-    async confirmQuantity() {
-        const quantity = parseInt(document.getElementById('quantityInput').value);
-        
-        if (!quantity || quantity <= 0) {
-            this.showError('La cantidad debe ser mayor a 0');
-            return;
-        }
-
-        if (!this.currentItemForWithdrawal) {
-            this.showError('No hay item seleccionado');
-            return;
-        }
-
-        if (quantity > this.currentItemForWithdrawal.stock) {
-            this.showError(`Cantidad máxima disponible: ${this.currentItemForWithdrawal.stock}`);
-            return;
-        }
-
-        // Verificar si el item ya está en la lista
-        const existingIndex = this.withdrawalItems.findIndex(
-            wi => wi.item.id === this.currentItemForWithdrawal.id
-        );
-
-        if (existingIndex >= 0) {
-            // Actualizar cantidad existente
-            const newQuantity = this.withdrawalItems[existingIndex].quantity + quantity;
-            if (newQuantity > this.currentItemForWithdrawal.stock) {
-                this.showError("La cantidad total excede el stock disponible");
-                return;
-            }
-            this.withdrawalItems[existingIndex].quantity = newQuantity;
-        } else {
-            // Agregar nuevo item
-            this.withdrawalItems.push({
-                item: this.currentItemForWithdrawal,
-                quantity: quantity
-            });
-        }
-
-        this.hideModal('quantityModal');
-        this.updateWithdrawalList();
-        this.showSuccess('Item agregado al retiro');
     }
 
     updateWithdrawalList() {
@@ -1010,8 +1000,8 @@ class InventoryApp {
             row.innerHTML = `
                 <td>${this.escapeHtml(item.name)}</td>
                 <td>${this.escapeHtml(item.barcode)}</td>
-                <td>${this.escapeHtml(item.obra)}</td>
-                <td>${this.escapeHtml(item.n_factura)}</td>
+                <td>${this.escapeHtml(item.obra || '')}</td>
+                <td>${this.escapeHtml(item.n_factura || '')}</td>
                 <td>${item.stock}</td>
                 <td>${withdrawalItem.quantity}</td>
                 <td>
@@ -1140,52 +1130,37 @@ class InventoryApp {
             }
 
         } catch (error) {
-            console.error('Error procesando retiro en Supabase:', error);
+            console.error('Error procesando retiro con Supabase:', error);
             
             // Fallback: usar backend API
-            const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/withdrawals`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.currentUser.access_token}`
-                },
-                body: JSON.stringify(withdrawalData)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Error del servidor');
-            }
+            await this.processWithdrawalWithAPI(obra);
         }
     }
 
-    async recordHistory(actionType, itemId, quantity, obra = '') {
-        try {
-            const historyRecord = {
-                action_type: actionType,
-                item_id: itemId,
-                quantity: quantity,
-                obra: obra || this.currentWarehouse.name,
-                user_id: this.currentUser.id,
+    async processWithdrawalWithAPI(obra) {
+        const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/withdrawals`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                obra: obra,
                 warehouse_id: this.currentWarehouse.id,
-                action_date: new Date().toISOString()
-            };
+                user_id: this.currentUser.id,
+                items: this.withdrawalItems.map(wi => ({
+                    item_id: wi.item.id,
+                    quantity: wi.quantity
+                }))
+            })
+        });
 
-            const { error } = await this.supabase
-                .from('history')
-                .insert([historyRecord]);
-
-            if (error) throw error;
-
-        } catch (error) {
-            console.error('Error registrando en historial:', error);
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Error del servidor');
         }
     }
-}
-// Métodos de historial y funciones adicionales
-class InventoryApp {
-    // ... métodos anteriores ...
 
+    // Historial
     async loadHistory() {
         try {
             const history = await this.fetchHistory();
@@ -1203,32 +1178,20 @@ class InventoryApp {
         }
 
         try {
+            // Intentar con Supabase
             const { data, error } = await this.supabase
                 .from('history')
-                .select(`
-                    *,
-                    items(name),
-                    users(full_name),
-                    warehouses(name)
-                `)
+                .select('*')
                 .eq('warehouse_id', this.currentWarehouse.id)
-                .order('action_date', { ascending: false })
+                .order('created_at', { ascending: false })
                 .limit(100);
 
-            if (!error) {
-                return data.map(record => ({
-                    ...record,
-                    item_name: record.items?.name || record.item_name,
-                    user_name: record.users?.full_name || record.user_name,
-                    warehouse_name: record.warehouses?.name || record.warehouse_name
-                }));
-            }
+            if (!error) return data;
 
             // Fallback: usar backend API
             const response = await fetch(
                 `${CONFIG.API_BASE_URL}/api/v1/history/warehouse/${this.currentWarehouse.id}`
             );
-            
             if (response.ok) {
                 return await response.json();
             }
@@ -1242,204 +1205,114 @@ class InventoryApp {
 
     renderHistoryTable(history) {
         const tbody = document.getElementById('historyTableBody');
+        const infoElement = document.getElementById('historyInfo');
         
         // Limpiar tabla
         tbody.innerHTML = '';
         
         if (history.length === 0) {
-            const row = document.createElement('tr');
-            row.innerHTML = `<td colspan="6" class="text-center">No hay registros de historial</td>`;
-            tbody.appendChild(row);
+            infoElement.textContent = 'No hay registros en el historial';
             return;
         }
         
-        // Renderizar registros
+        // Renderizar historial
         history.forEach(record => {
             const row = document.createElement('tr');
             
+            // Determinar clase CSS según tipo
+            const typeClass = record.type === 'withdrawal' ? 'withdrawal-record' : 
+                            record.type === 'addition' ? 'addition-record' : '';
+            
             // Formatear fecha
-            const actionDate = new Date(record.action_date);
-            const formattedDate = actionDate.toLocaleString('es-ES');
-            
-            // Traducir tipo de acción
-            const actionTranslations = {
-                'withdrawal': 'Retiro',
-                'addition': 'Adición',
-                'adjustment': 'Ajuste'
-            };
-            const actionText = actionTranslations[record.action_type] || record.action_type;
-            
-            // Clase CSS según tipo de acción
-            let actionClass = '';
-            if (record.action_type === 'withdrawal') {
-                actionClass = 'withdrawal-action';
-            } else if (record.action_type === 'addition') {
-                actionClass = 'addition-action';
-            }
+            const date = new Date(record.created_at || record.date);
+            const formattedDate = date.toLocaleString('es-CL');
             
             row.innerHTML = `
                 <td>${formattedDate}</td>
-                <td class="${actionClass}">${actionText}</td>
-                <td>${this.escapeHtml(record.item_name)}</td>
+                <td class="${typeClass}">${this.getTypeDisplayName(record.type)}</td>
+                <td>${this.escapeHtml(record.item_name || '')}</td>
+                <td>${this.escapeHtml(record.barcode || '')}</td>
                 <td>${record.quantity}</td>
-                <td>${this.escapeHtml(record.obra)}</td>
-                <td>${this.escapeHtml(record.user_name)}</td>
+                <td>${this.escapeHtml(record.obra || '')}</td>
+                <td>${this.escapeHtml(record.user_name || 'Usuario')}</td>
             `;
             
             tbody.appendChild(row);
         });
+        
+        infoElement.textContent = `Total de registros: ${history.length}`;
     }
 
-    // Métodos para agregar nuevos items
-    async showAddItemModal() {
-        const modalContent = `
-            <form id="addItemForm">
-                <div class="form-group">
-                    <label for="newItemName">Nombre:</label>
-                    <input type="text" id="newItemName" class="form-control" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="newItemDescription">Descripción:</label>
-                    <input type="text" id="newItemDescription" class="form-control">
-                </div>
-                
-                <div class="form-group">
-                    <label for="newItemBarcode">Código de barras:</label>
-                    <input type="text" id="newItemBarcode" class="form-control" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="newItemStock">Stock inicial:</label>
-                    <input type="number" id="newItemStock" class="form-control" value="0" min="0">
-                </div>
-                
-                <div class="form-group">
-                    <label for="newItemObra">Obra:</label>
-                    <input type="text" id="newItemObra" class="form-control" 
-                           placeholder="${this.currentWarehouse.name}">
-                </div>
-                
-                <div class="form-group">
-                    <label for="newItemFactura">N° Factura:</label>
-                    <input type="text" id="newItemFactura" class="form-control" 
-                           placeholder="${this.currentWarehouse.code}">
-                </div>
-                
-                <div id="addItemError" class="error-message" style="display: none;"></div>
-                
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="inventoryApp.hideModal('addItemModal')">
-                        Cancelar
-                    </button>
-                    <button type="submit" class="btn btn-primary">
-                        Guardar
-                    </button>
-                </div>
-            </form>
-        `;
-
-        document.getElementById('addItemModal').querySelector('.modal-body').innerHTML = modalContent;
-        
-        // Configurar evento del formulario
-        document.getElementById('addItemForm').addEventListener('submit', (e) => this.handleAddItem(e));
-        
-        this.showModal('addItemModal');
-        document.getElementById('newItemName').focus();
-    }
-
-    async handleAddItem(event) {
-        event.preventDefault();
-        
-        const formData = {
-            name: document.getElementById('newItemName').value.trim(),
-            description: document.getElementById('newItemDescription').value.trim(),
-            barcode: document.getElementById('newItemBarcode').value.trim(),
-            stock: parseInt(document.getElementById('newItemStock').value) || 0,
-            obra: document.getElementById('newItemObra').value.trim() || this.currentWarehouse.name,
-            n_factura: document.getElementById('newItemFactura').value.trim() || this.currentWarehouse.code,
-            warehouse_id: this.currentWarehouse.id
-        };
-
-        // Validaciones
-        if (!formData.name || !formData.barcode) {
-            this.showError('Nombre y código de barras son obligatorios', 'addItemError');
-            return;
-        }
-
-        if (formData.stock < 0) {
-            this.showError('El stock no puede ser negativo', 'addItemError');
-            return;
-        }
-
-        this.showLoading();
-
+    async recordHistory(type, itemId, quantity, obra = null) {
         try {
-            await this.createNewItem(formData);
-            
-            this.hideModal('addItemModal');
-            this.showSuccess('Item agregado correctamente');
-            
-            // Recargar inventario
-            await this.loadInventory();
-            
-        } catch (error) {
-            console.error('Error creando item:', error);
-            this.showError(error.message, 'addItemError');
-        } finally {
-            this.hideLoading();
-        }
-    }
+            const historyData = {
+                type: type,
+                item_id: itemId,
+                quantity: quantity,
+                obra: obra,
+                warehouse_id: this.currentWarehouse.id,
+                user_id: this.currentUser.id,
+                user_name: this.currentUser.full_name || this.currentUser.email
+            };
 
-    async createNewItem(itemData) {
-        try {
             // Intentar con Supabase
-            const { data, error } = await this.supabase
-                .from('items')
-                .insert([itemData])
-                .select()
-                .single();
+            const { error } = await this.supabase
+                .from('history')
+                .insert([historyData]);
 
-            if (error) {
-                if (error.code === '23505') { // Violación de unique constraint
-                    throw new Error('Ya existe un item con ese código de barras');
-                }
-                throw error;
-            }
-
-            // Registrar en historial si hay stock inicial
-            if (itemData.stock > 0) {
-                await this.recordHistory('addition', data.id, itemData.stock);
-            }
-
-            return data;
+            if (error) throw error;
 
         } catch (error) {
-            console.error('Error creando item en Supabase:', error);
+            console.error('Error registrando en historial:', error);
             
             // Fallback: usar backend API
-            const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/inventory`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.currentUser.access_token}`
-                },
-                body: JSON.stringify(itemData)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Error del servidor');
+            try {
+                await fetch(`${CONFIG.API_BASE_URL}/api/v1/history`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(historyData)
+                });
+            } catch (fetchError) {
+                console.error('Error en fallback recordHistory:', fetchError);
             }
-
-            return await response.json();
         }
     }
 
-    // Navegación entre páginas
+    // Utilidades
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    getTypeDisplayName(type) {
+        const types = {
+            'addition': 'Agregado',
+            'withdrawal': 'Retirado',
+            'adjustment': 'Ajustado'
+        };
+        return types[type] || type;
+    }
+
+    cleanupPage(pageName) {
+        switch (pageName) {
+            case 'withdrawals':
+                this.stopCamera();
+                break;
+            case 'inventory':
+                // Limpiar búsquedas pendientes
+                clearTimeout(this.searchTimeout);
+                break;
+        }
+    }
+
+    // Métodos para mostrar páginas específicas
     showInventoryPage() {
         if (!this.currentWarehouse) {
-            this.showError('Primero debe seleccionar una bodega');
+            this.showError('Debe seleccionar una bodega primero');
             return;
         }
         this.showPage('inventory');
@@ -1447,7 +1320,7 @@ class InventoryApp {
 
     showWithdrawalsPage() {
         if (!this.currentWarehouse) {
-            this.showError('Primero debe seleccionar una bodega');
+            this.showError('Debe seleccionar una bodega primero');
             return;
         }
         this.showPage('withdrawals');
@@ -1455,45 +1328,67 @@ class InventoryApp {
 
     showHistoryPage() {
         if (!this.currentWarehouse) {
-            this.showError('Primero debe seleccionar una bodega');
+            this.showError('Debe seleccionar una bodega primero');
             return;
         }
         this.showPage('history');
     }
-
-    // Limpieza al cambiar de página
-    cleanupPage(pageName) {
-        switch (pageName) {
-            case 'withdrawals':
-                this.stopCamera();
-                break;
-        }
-    }
 }
 
-// Estilos CSS adicionales para el historial
-const additionalStyles = `
-    .withdrawal-action {
-        color: #f44336;
-        font-weight: bold;
-    }
-    
-    .addition-action {
-        color: #4caf50;
-        font-weight: bold;
-    }
-    
-    .text-center {
-        text-align: center;
-    }
-    
-    .btn-sm {
-        padding: 6px 12px;
-        font-size: 12px;
-    }
-`;
+// Inicializar aplicación cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', () => {
+    window.inventoryApp = new InventoryApp();
+});
 
-// Agregar estilos adicionales al documento
-const styleSheet = document.createElement("style");
-styleSheet.innerText = additionalStyles;
-document.head.appendChild(styleSheet);
+// Configuración global
+const CONFIG = {
+    APP_TITLE: 'Sistema de Inventario',
+    SUPABASE_URL: 'https://your-project.supabase.co',
+    SUPABASE_ANON_KEY: 'your-anon-key',
+    API_BASE_URL: 'https://your-backend.com',
+    
+    SCANNER_CONFIG: {
+        inputStream: {
+            name: "Live",
+            type: "LiveStream",
+            target: document.querySelector('#scanner'),
+            constraints: {
+                width: 640,
+                height: 480,
+                facingMode: "environment"
+            }
+        },
+        decoder: {
+            readers: [
+                "code_128_reader",
+                "ean_reader",
+                "ean_8_reader",
+                "code_39_reader",
+                "code_39_vin_reader",
+                "codabar_reader",
+                "upc_reader",
+                "upc_e_reader"
+            ]
+        },
+        locator: {
+            patchSize: "medium",
+            halfSample: true
+        },
+        numOfWorkers: 2,
+        frequency: 10,
+        debug: {
+            showCanvas: true,
+            showPatches: true,
+            showFoundPatches: true,
+            showSkeleton: true,
+            showLabels: true,
+            showPatchLabels: true,
+            showRemainingPatchLabels: true,
+            boxFromPatches: {
+                showTransformed: true,
+                showTransformedBox: true,
+                showBB: true
+            }
+        }
+    }
+};
