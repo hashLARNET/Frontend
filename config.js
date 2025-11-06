@@ -44,8 +44,9 @@ const CONFIG = {
     }
 };
 
-// Variables globales para Netlify (se sobreescriben con environment variables)
-window.SUPABASE_URL = 'https://ahjlhqhetugmqdoscnbr.supabase.co/';
-window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoamxocWhldHVnbXFkb3NjbmJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxNjI2MTMsImV4cCI6MjA2NzczODYxM30.k01s6f-gEaOBzPp1T2oCmnfi3UEIlBnY08Fr_dbLH1o';
-
-window.API_BASE_URL = 'https://render-zgn0.onrender.com';
+window.CONFIG = {
+    SUPABASE_URL: 'https://ahjlhqhetugmqdoscnbr.supabase.co',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoamxocWhldHVnbXFkb3NjbmJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxNjI2MTMsImV4cCI6MjA2NzczODYxM30.k01s6f-gEaOBzPp1T2oCmnfi3UEIlBnY08Fr_dbLH1o',
+    API_BASE_URL: 'https://render-zgn0.onrender.com',
+    APP_TITLE: 'Sistema de Inventario Multi-Bodega'
+};
